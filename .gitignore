@@ -1,0 +1,10 @@
+.Xil/
+xsim.dir/
+__pycache__/
+*.pyc
+*.log
+*.jou
+*.pb
+*.wdb
+*.backup.jou
+*.backup.log

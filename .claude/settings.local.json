@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(D:/2021.2/Vivado/2021.2/bin/xvlog *)",
+      "Bash(D:/2021.2/Vivado/2021.2/bin/vivado *)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/feature_buffer.v\")",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/vivado\" -mode batch -nolog -nojournal -notrace -source \"D:/RICS_V_CNN/1DCNN_ACC/scripts/synth_feature_buffer.tcl\")",
+      "Bash(D:/2021.2/Vivado/2021.2/bin/xelab *)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/reset_sync.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/saturate_int8.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/requant_relu.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/fake_weight_rom.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/fake_bn_rom.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/axi_lite_slave_regs.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/input_buffer.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/feature_buffer.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/initial_conv_engine.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/depthwise_conv_engine.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/pointwise_conv_engine.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/maxpool_unit.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/gap_unit.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/final_conv_engine.v\" \"D:/RICS_V_CNN/1DCNN_ACC/rtl/cnn_accelerator_top.v\")",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog\" -sv \"D:/RICS_V_CNN/1DCNN_ACC/tb/tb_cnn_accelerator.sv\")",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab\" work.tb_cnn_accelerator -snapshot tb_cnn_accelerator_snap)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim\" tb_cnn_accelerator_snap -runall)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv \"tb/tb_cnn_accelerator.sv\" \"rtl/reset_sync.v\" \"rtl/saturate_int8.v\" \"rtl/requant_relu.v\" \"rtl/fake_weight_rom.v\" \"rtl/fake_bn_rom.v\" \"rtl/input_buffer.v\" \"rtl/feature_buffer.v\" \"rtl/axi_lite_slave_regs.v\" \"rtl/initial_conv_engine.v\" \"rtl/depthwise_conv_engine.v\" \"rtl/pointwise_conv_engine.v\" \"rtl/maxpool_unit.v\" \"rtl/gap_unit.v\" \"rtl/final_conv_engine.v\" \"rtl/cnn_accelerator_top.v\")",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" -debug typical work.tb_cnn_accelerator -s tb_cnn_accelerator_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim.bat\" tb_cnn_accelerator_sim -runall)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/reset_sync.v rtl/saturate_int8.v rtl/requant_relu.v rtl/fake_weight_rom.v rtl/fake_bn_rom.v rtl/input_buffer.v rtl/feature_buffer.v rtl/axi_lite_slave_regs.v rtl/initial_conv_engine.v rtl/depthwise_conv_engine.v rtl/pointwise_conv_engine.v rtl/maxpool_unit.v rtl/gap_unit.v rtl/final_conv_engine.v rtl/cnn_accelerator_top.v rtl/soc_top.v tb/tb_soc_shell.sv)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" tb_soc_shell -s tb_soc_shell_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim.bat\" tb_soc_shell_sim -runall)",
+      "Bash(D:/2021.2/Vivado/2021.2/bin/xvlog.bat *)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/cpu/regfile.v rtl/cpu/alu.v rtl/cpu/imm_gen.v rtl/cpu/ctrl_unit.v rtl/cpu/hazard_unit.v rtl/cpu/branch_unit.v rtl/cpu/axi_lite_master.v rtl/cpu/inst_rom.v rtl/cpu/data_ram.v rtl/cpu/riscv_top.v tb/tb_riscv_core.sv)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" tb_riscv_core -s tb_riscv_core_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim.bat\" tb_riscv_core_sim -runall)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/reset_sync.v rtl/cpu/regfile.v rtl/cpu/alu.v rtl/cpu/imm_gen.v rtl/cpu/ctrl_unit.v rtl/cpu/hazard_unit.v rtl/cpu/branch_unit.v rtl/cpu/axi_lite_master.v rtl/cpu/inst_rom.v rtl/cpu/data_ram.v rtl/cpu/riscv_top.v rtl/axi_lite_addr_decode.v rtl/saturate_int8.v rtl/requant_relu.v rtl/fake_weight_rom.v rtl/fake_bn_rom.v rtl/input_buffer.v rtl/feature_buffer.v rtl/axi_lite_slave_regs.v rtl/initial_conv_engine.v rtl/depthwise_conv_engine.v rtl/pointwise_conv_engine.v rtl/maxpool_unit.v rtl/gap_unit.v rtl/final_conv_engine.v rtl/cnn_accelerator_top.v rtl/soc_top.v tb/tb_soc.sv)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" tb_soc -s tb_soc_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim.bat\" tb_soc_sim -runall)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/vivado.bat\" -mode batch -nojournal -nolog -source scripts/synth_feature_buffer.tcl)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" -L xpm tb_cnn_accelerator -s tb_cnn_accelerator_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" -L xpm tb_soc -s tb_soc_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/axi_lite_slave_regs.v)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/cpu/axi_lite_master.v)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/cpu/riscv_top.v)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xvlog.bat\" -sv rtl/cpu/regfile.v rtl/cpu/alu.v rtl/cpu/imm_gen.v rtl/cpu/ctrl_unit.v rtl/cpu/hazard_unit.v rtl/cpu/branch_unit.v rtl/cpu/axi_lite_master.v rtl/cpu/inst_rom.v rtl/cpu/data_ram.v rtl/cpu/riscv_top.v tb/tb_riscv_stress.sv)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xelab.bat\" tb_riscv_stress -s tb_riscv_stress_sim)",
+      "Bash(\"D:/2021.2/Vivado/2021.2/bin/xsim.bat\" tb_riscv_stress_sim -runall)"
+    ]
+  }
+}
