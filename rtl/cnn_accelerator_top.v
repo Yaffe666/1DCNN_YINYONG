@@ -40,7 +40,7 @@ module cnn_accelerator_top (
 
 localparam PAR_CH = 8;
 localparam PAR_OC = 8;
-localparam PAR_IC = 4;
+localparam PAR_IC = 8;
 localparam PAR_CLASS = 8;
 localparam MAX_INPUT_LEN = 16384;
 localparam MAX_FEATURE_LEN = 2048;
@@ -488,7 +488,7 @@ final_conv_engine #(
     .gap_rd_addr_flat(fc_gap_rd_addr_flat),
     .gap_rd_data_flat(fc_gap_rd_data_flat),
     .weight_addr_flat(fc_weight_addr_flat),
-    .weight_data_flat(weight_data_flat),
+    .weight_data_flat(weight_data_flat[PAR_CLASS*PAR_IC*8-1:0]),
     .bn_addr_flat(fc_bn_addr_flat),
     .bn_scale_q8_8_flat(bn_scale_q8_8_flat[PAR_CLASS*16-1:0]),
     .bn_bias_flat(bn_bias_flat[PAR_CLASS*32-1:0]),

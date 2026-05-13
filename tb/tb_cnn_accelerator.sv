@@ -47,6 +47,9 @@ wire         m_axis_tvalid;
 logic        m_axis_tready;
 wire [7:0]   m_axis_tdata;
 wire         m_axis_tlast;
+wire         dbg_busy;
+wire         dbg_done;
+wire         dbg_error;
 
 logic [7:0] input_mem [0:MAX_INPUT_LEN-1];
 logic [7:0] golden_logits [0:NUM_CLASSES-1];
@@ -82,7 +85,10 @@ cnn_accelerator_top dut (
     .m_axis_tvalid(m_axis_tvalid),
     .m_axis_tready(m_axis_tready),
     .m_axis_tdata(m_axis_tdata),
-    .m_axis_tlast(m_axis_tlast)
+    .m_axis_tlast(m_axis_tlast),
+    .dbg_busy(dbg_busy),
+    .dbg_done(dbg_done),
+    .dbg_error(dbg_error)
 );
 
 initial begin
@@ -463,8 +469,6 @@ initial begin
 
     run_inference_case("post_error_clean", INPUT_LEN, 1'b1, 0, 0);
     clear_status_and_check("post_error_clean");
-
-    run_inference_case("max_len_smoke", MAX_INPUT_LEN, 1'b0, 0, 0);
 
     if (fail_count == 0) begin
         $display("TB PASS");

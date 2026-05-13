@@ -18,31 +18,30 @@ module fake_bn_rom #(
 
 localparam [71:0] DEFAULT_ENTRY = {16'h0100, 32'h00000000, 8'h00, 8'h00, 8'h00};
 
-(* rom_style = "block" *) reg [71:0] mem [0:DEPTH-1];
+genvar p;
+generate
+    for (p = 0; p < PORTS; p = p + 1) begin : g_port
+        (* rom_style = "block" *) reg [71:0] mem [0:DEPTH-1];
+        reg [71:0] entry_word;
 
-integer i;
-integer p;
-reg [ADDR_WIDTH-1:0] addr_word;
-reg [71:0] entry_word;
+        integer i;
+        initial begin
+            for (i = 0; i < DEPTH; i = i + 1) begin
+                mem[i] = DEFAULT_ENTRY;
+            end
+            $readmemh(MEM_FILE, mem);
+        end
 
-initial begin
-    for (i = 0; i < DEPTH; i = i + 1) begin
-        mem[i] = DEFAULT_ENTRY;
+        always @(posedge clk) begin
+            entry_word = mem[addr_flat[p*ADDR_WIDTH +: ADDR_WIDTH]];
+            scale_q8_8_flat[p*16 +: 16] <= entry_word[71:56];
+            bias_flat[p*32 +: 32] <= entry_word[55:24];
+            input_zp_flat[p*8 +: 8] <= entry_word[23:16];
+            weight_zp_flat[p*8 +: 8] <= entry_word[15:8];
+            output_zp_flat[p*8 +: 8] <= entry_word[7:0];
+        end
     end
-    $readmemh(MEM_FILE, mem);
-end
-
-always @(posedge clk) begin
-    for (p = 0; p < PORTS; p = p + 1) begin
-        addr_word = addr_flat[p*ADDR_WIDTH +: ADDR_WIDTH];
-        entry_word = mem[addr_word];
-        scale_q8_8_flat[p*16 +: 16] <= entry_word[71:56];
-        bias_flat[p*32 +: 32] <= entry_word[55:24];
-        input_zp_flat[p*8 +: 8] <= entry_word[23:16];
-        weight_zp_flat[p*8 +: 8] <= entry_word[15:8];
-        output_zp_flat[p*8 +: 8] <= entry_word[7:0];
-    end
-end
+endgenerate
 
 endmodule
 

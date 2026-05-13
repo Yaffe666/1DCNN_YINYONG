@@ -122,7 +122,17 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     val0[lane] <= feat_rd_data_flat[lane*8 +: 8];
                 end
-                state <= S_RD1;
+
+                rd_pos = (curr_pos << 1) + 1;
+                for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                    ch_abs = curr_ch_base + lane;
+                    if (ch_abs < channels) begin
+                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + rd_pos;
+                        feat_rd_en[lane] <= 1'b1;
+                        feat_rd_addr_flat[lane*18 +: 18] <= feature_addr;
+                    end
+                end
+                state <= S_WAIT1;
             end
 
             S_RD1: begin
@@ -148,8 +158,28 @@ always @(posedge clk) begin
                 busy <= 1'b1;
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     val1[lane] <= feat_rd_data_flat[lane*8 +: 8];
+                    ch_abs = curr_ch_base + lane;
+                    if (ch_abs < channels) begin
+                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + curr_pos;
+                        max_value = (val0[lane] >= $signed(feat_rd_data_flat[lane*8 +: 8])) ? val0[lane] : $signed(feat_rd_data_flat[lane*8 +: 8]);
+                        feat_wr_en[lane] <= 1'b1;
+                        feat_wr_addr_flat[lane*18 +: 18] <= feature_addr;
+                        feat_wr_data_flat[lane*8 +: 8] <= max_value;
+                    end
                 end
-                state <= S_WRITE;
+
+                if ((curr_pos + 1'b1) < output_len) begin
+                    curr_pos <= curr_pos + 1'b1;
+                    state <= S_RD0;
+                end else if ((curr_ch_base + PAR_CH) < channels) begin
+                    curr_ch_base <= curr_ch_base + PAR_CH;
+                    curr_pos <= 16'd0;
+                    state <= S_RD0;
+                end else begin
+                    busy <= 1'b0;
+                    done <= 1'b1;
+                    state <= S_IDLE;
+                end
             end
 
             S_WRITE: begin

@@ -609,34 +609,36 @@ ID 阶段分支比较可能读到 WB 尚未写入 regfile 的旧值。
 
 ### 9.2 `<1ms` latency target 未满足
 
-状态：未解决，已延期。
+状态：Stage 1 2048 功能回归在综合安全回退后通过，但 `<100000` cycle 目标尚未满足；Vivado 综合/时序复测正在进行。
 
 当前测量：
 
 ```text
-2048 case cycle_cnt = 240236
-16384 smoke cycle_cnt = 1918556
+2048 case cycle_cnt = 108598
 ```
+
+16384/max-length smoke regression 已按当前项目决策暂缓；后续性能优化只以 2048 case 为准。
 
 在 100 MHz 下：
 
-- 2048 case 约 2.40 ms。
-- `<1ms` 目标要求 B+C 阶段小于 100000 cycles。
+- 2048 case 约 1.086 ms。
+- `<1ms` 目标要求 B+C 阶段小于 100000 cycles，当前 post-rollback Stage 1 尚未满足。
+- 临时 `PAR_CH=12` / `PAR_OC=12` 配置曾在 ModelSim 达到 `cycle_cnt=64129`，但因综合可行性未证明已回退。
 
-原因：
+已保留优化：
 
-- 当前实现优先功能正确。
-- 为同步 BRAM/ROM 和 pipeline valid 对齐加入了较多保守 wait state。
-- channel/class 并行度和访问调度还没有进行性能收敛。
+1. InitialConv / Depthwise tap loop 改为连续地址发射，填充后每拍消费一个返回 tap。
+2. Pointwise IC group 改为连续地址发射，并将 `PAR_IC` 提高到 8。
+3. `PAR_CH` / `PAR_OC` / BN 端口 / feature-buffer banking 回退到 8 lanes/banks。
+4. MaxPool 合并第二读请求与首样本保存，并在第二样本返回时直接写出。
 
-候选优化方向：
+剩余复核：
 
-1. 将地址生成和数据消费改为流水化，而不是插入空等周期。
-2. 提高 channel/class 并行度利用率。
-3. 先解决 feature buffer BRAM/XPM banking，再基于真实 BRAM port/width 做调度优化。
-4. 对 compute-heavy engine 做综合资源和 Fmax 分析。
+1. 等待当前 Stage 1 Vivado 综合/时序完成，确认 `PAR_IC=8` / 64-port fake weight ROM 配置的资源/Fmax。
+2. 重新跑 Stage 4 SoC regression。
+3. 若综合结果可接受，再做更保守的 `<100000` latency 优化，例如 requant/writeback overlap 或可综合 ROM banking/scheduling。
 
-建议优先级：高，但应在 BRAM 资源结构稳定后进行。
+建议优先级：高，但应先以当前综合结果决定下一步优化方向。
 
 ### 9.3 CPU 紧凑 MMIO store hazard —— 实为 inst_rom / IF 对齐问题
 
@@ -663,7 +665,7 @@ ID 阶段分支比较可能读到 WB 尚未写入 regfile 的旧值。
 建议后续按以下顺序推进（`feature_buffer` BRAM 和 CPU MMIO hazard 已关闭）：
 
 1. 做 Stage 1/4 综合资源和时序检查。
-2. 做 CNN 性能优化，将 2048 case 从 `240236` cycles 降到 `<100000` cycles（§9.2）。
+2. 在当前 post-rollback `108598` cycles 基线上继续做 CNN 性能优化，目标降到 `<100000` cycles（§9.2）。
 3. 对 full SoC 运行更多场景：
    - 输入 valid gaps。
    - 输出 backpressure。
@@ -762,6 +764,6 @@ CNN computes logits -> CPU polls STATUS.done -> CPU writes TEST_OUTPUT ->
 testbench checks logits and magic -> PASS
 ```
 
-目前最重要的后续工作是 CNN 性能优化：
+目前最重要的后续工作是 CNN 综合复核与性能优化：
 
-1. 将 CNN 2048 case 延迟从 `240236` cycles 优化到 `<100000` cycles（§9.2），达成 `<1ms` 目标。BRAM 和 CPU 基础设施问题已全部关闭，可直接基于真实 BRAM port/width 做调度和流式化优化。
+1. 先确认当前 post-rollback CNN 配置能否通过 Vivado 综合/时序，再将 2048 case 延迟从 `108598` cycles 继续优化到 `<100000` cycles（§9.2），达成 `<1ms` 目标。BRAM 和 CPU 基础设施问题已全部关闭，后续应基于真实 BRAM/ROM port 与 Fmax 结果做调度和流式化优化。
