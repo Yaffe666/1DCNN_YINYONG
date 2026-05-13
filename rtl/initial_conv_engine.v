@@ -56,12 +56,15 @@ reg [6:0] curr_k;
 reg [6:0] issue_k;
 reg [4:0] curr_oc_base;
 
-reg signed [31:0] acc_reg [0:PAR_OC-1];
-reg signed [15:0] bn_scale_reg [0:PAR_OC-1];
-reg signed [31:0] bn_bias_reg [0:PAR_OC-1];
-reg signed [7:0]  input_zp_reg [0:PAR_OC-1];
-reg signed [7:0]  weight_zp_reg [0:PAR_OC-1];
-reg signed [7:0]  output_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [31:0] acc_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [15:0] bn_scale_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [31:0] bn_bias_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  input_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  weight_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  output_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg [PAR_OC*8-1:0] weight_data_r;
+(* DONT_TOUCH = "true" *) reg signed [8:0] input_preproc_r [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [8:0] wt_preproc_r    [0:PAR_OC-1];
 reg [PAR_OC-1:0] rq_in_valid;
 
 wire [PAR_OC-1:0] rq_out_valid;
@@ -135,6 +138,11 @@ always @(posedge clk) begin
         feat_wr_addr_flat <= {(PAR_OC*18){1'b0}};
         feat_wr_data_flat <= {(PAR_OC*8){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
+        weight_data_r <= {(PAR_OC*8){1'b0}};
+        for (lane = 0; lane < PAR_OC; lane = lane + 1) begin
+            input_preproc_r[lane] <= 9'sd0;
+            wt_preproc_r[lane] <= 9'sd0;
+        end
         wb_valid <= {WB_PIPE{1'b0}};
         drain_cnt <= 3'd0;
         for (lane = 0; lane < PAR_OC; lane = lane + 1) begin
@@ -162,6 +170,8 @@ always @(posedge clk) begin
         feat_wr_addr_flat <= {(PAR_OC*18){1'b0}};
         feat_wr_data_flat <= {(PAR_OC*8){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
+
+        weight_data_r <= weight_data_flat;
 
         // === Writeback pipeline: shift ===
         for (i = WB_PIPE-1; i > 0; i = i - 1) begin
@@ -283,6 +293,8 @@ always @(posedge clk) begin
                     oc_abs = curr_oc_base + lane;
                     if (oc_abs < TOTAL_OUT_CH) begin
                         weight_addr_flat[lane*16 +: 16] <= (oc_abs * KERNEL_SIZE) + issue_k;
+                        input_preproc_r[lane] <= $signed(input_rd_data) - $signed(input_zp_reg[lane]);
+                        wt_preproc_r[lane]    <= $signed(weight_data_flat[lane*8 +: 8]) - $signed(weight_zp_reg[lane]);
                     end
                 end
                 issue_k <= issue_k + 1'b1;
@@ -291,13 +303,12 @@ always @(posedge clk) begin
 
             S_TAP_ACC: begin
                 busy <= 1'b1;
-                sample_data = input_rd_data;
                 for (lane = 0; lane < PAR_OC; lane = lane + 1) begin
                     oc_abs = curr_oc_base + lane;
                     if (oc_abs < TOTAL_OUT_CH) begin
                         acc_reg[lane] <= acc_reg[lane]
-                            + (($signed(sample_data) - input_zp_reg[lane])
-                            * ($signed(weight_data_flat[lane*8 +: 8]) - weight_zp_reg[lane]));
+                            + $signed(input_preproc_r[lane])
+                            * $signed(wt_preproc_r[lane]);
                     end
                 end
 
@@ -348,6 +359,14 @@ always @(posedge clk) begin
                         state <= S_WB_DRAIN;
                     end
                 end else begin
+                    // Preprocess next tap data for next iteration
+                    for (lane = 0; lane < PAR_OC; lane = lane + 1) begin
+                        oc_abs = curr_oc_base + lane;
+                        if (oc_abs < TOTAL_OUT_CH) begin
+                            input_preproc_r[lane] <= $signed(input_rd_data) - $signed(input_zp_reg[lane]);
+                            wt_preproc_r[lane]    <= $signed(weight_data_flat[lane*8 +: 8]) - $signed(weight_zp_reg[lane]);
+                        end
+                    end
                     curr_k <= curr_k + 1'b1;
                     state <= S_TAP_ACC;
                 end
