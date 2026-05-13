@@ -28,22 +28,27 @@ module gap_unit #(
 
 localparam MAX_FEATURE_LEN = 2048;
 
-localparam [2:0] S_IDLE  = 3'd0;
-localparam [2:0] S_RD    = 3'd1;
-localparam [2:0] S_WAIT  = 3'd2;
-localparam [2:0] S_ACC   = 3'd3;
-localparam [2:0] S_WRITE = 3'd4;
+localparam [2:0] S_IDLE   = 3'd0;
+localparam [2:0] S_RECIP  = 3'd1;
+localparam [2:0] S_RECIP2 = 3'd2;
+localparam [2:0] S_RD     = 3'd3;
+localparam [2:0] S_WAIT   = 3'd4;
+localparam [2:0] S_ACC    = 3'd5;
+localparam [2:0] S_DIV    = 3'd6;
+localparam [2:0] S_WRITE  = 3'd7;
 
 reg [2:0] state;
 reg [15:0] curr_pos;
 reg [7:0] curr_ch_base;
 reg [3:0] write_lane;
 reg signed [31:0] sum_reg [0:PAR_CH-1];
+reg signed [31:0] div_reg;
+reg signed [31:0] recip;
+reg signed [31:0] recip_raw;
 
 integer lane;
 integer ch_abs;
 integer feature_addr;
-integer avg_value;
 
 function signed [7:0] sat_int8;
     input signed [31:0] value;
@@ -67,6 +72,9 @@ always @(posedge clk) begin
         curr_pos <= 16'd0;
         curr_ch_base <= 8'd0;
         write_lane <= 4'd0;
+        div_reg <= 32'sd0;
+        recip <= 32'sd0;
+        recip_raw <= 32'sd0;
         feat_rd_en <= {PAR_CH{1'b0}};
         feat_rd_buf_sel <= 1'b0;
         feat_rd_addr_flat <= {(PAR_CH*18){1'b0}};
@@ -100,9 +108,29 @@ always @(posedge clk) begin
                         for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                             sum_reg[lane] <= 32'sd0;
                         end
-                        state <= S_RD;
+                        state <= S_RECIP;
                     end
                 end
+            end
+
+            S_RECIP: begin
+                busy <= 1'b1;
+                case (length)
+                    16'd1:    recip <= 32'd16777216;
+                    16'd2:    recip <= 32'd8388608;
+                    16'd4:    recip <= 32'd4194304;
+                    16'd8:    recip <= 32'd2097152;
+                    16'd16:   recip <= 32'd1048576;
+                    16'd32:   recip <= 32'd524288;
+                    16'd64:   recip <= 32'd262144;
+                    16'd128:  recip <= 32'd131072;
+                    16'd256:  recip <= 32'd65536;
+                    16'd512:  recip <= 32'd32768;
+                    16'd1024: recip <= 32'd16384;
+                    16'd2048: recip <= 32'd8192;
+                    default:  recip <= (32'd1 << 24) / length;
+                endcase
+                state <= S_RD;
             end
 
             S_RD: begin
@@ -137,22 +165,28 @@ always @(posedge clk) begin
                     state <= S_RD;
                 end else begin
                     write_lane <= 4'd0;
-                    state <= S_WRITE;
+                    state <= S_DIV;
                 end
+            end
+
+            S_DIV: begin
+                busy <= 1'b1;
+                div_reg <= ($signed(sum_reg[write_lane]) * recip) >>> 24;
+                state <= S_WRITE;
             end
 
             S_WRITE: begin
                 busy <= 1'b1;
                 ch_abs = curr_ch_base + write_lane;
                 if (ch_abs < channels) begin
-                    avg_value = sum_reg[write_lane] / length;
                     gap_wr_en <= 1'b1;
                     gap_wr_addr <= ch_abs[6:0];
-                    gap_wr_data <= sat_int8(avg_value);
+                    gap_wr_data <= sat_int8(div_reg);
                 end
 
                 if ((write_lane + 1'b1) < PAR_CH) begin
                     write_lane <= write_lane + 1'b1;
+                    state <= S_DIV;
                 end else if ((curr_ch_base + PAR_CH) < channels) begin
                     curr_ch_base <= curr_ch_base + PAR_CH;
                     curr_pos <= 16'd0;
