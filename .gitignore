@@ -9,3 +9,9 @@ __pycache__/
 *.backup.jou
 *.backup.log
 vivado_project/
+*.dcp
+transcript
+work/
+.claude/
+claude-task-viewer-main/
+claude-task-viewer-main.zip
