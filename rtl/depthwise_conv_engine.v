@@ -58,16 +58,12 @@ reg [6:0] curr_k;
 reg [6:0] issue_k;
 reg [7:0] curr_ch_base;
 
-(* DONT_TOUCH = "true" *) reg signed [31:0] acc_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [15:0] bn_scale_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [31:0] bn_bias_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  input_zp_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  weight_zp_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  output_zp_reg [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg [PAR_CH*8-1:0] feat_rd_data_r;
-(* DONT_TOUCH = "true" *) reg [PAR_CH*8-1:0] weight_data_r;
-(* DONT_TOUCH = "true" *) reg signed [8:0] feat_preproc_r [0:PAR_CH-1];
-(* DONT_TOUCH = "true" *) reg signed [8:0] wt_preproc_r   [0:PAR_CH-1];
+reg signed [31:0] acc_reg [0:PAR_CH-1];
+reg signed [15:0] bn_scale_reg [0:PAR_CH-1];
+reg signed [31:0] bn_bias_reg [0:PAR_CH-1];
+reg signed [7:0]  input_zp_reg [0:PAR_CH-1];
+reg signed [7:0]  weight_zp_reg [0:PAR_CH-1];
+reg signed [7:0]  output_zp_reg [0:PAR_CH-1];
 reg [PAR_CH-1:0] rq_in_valid;
 
 wire [PAR_CH-1:0] rq_out_valid;
@@ -155,12 +151,6 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_CH*16){1'b0}};
         bn_addr_flat <= {(PAR_CH*12){1'b0}};
         rq_in_valid <= {PAR_CH{1'b0}};
-        feat_rd_data_r <= {(PAR_CH*8){1'b0}};
-        weight_data_r <= {(PAR_CH*8){1'b0}};
-        for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
-            feat_preproc_r[lane] <= 9'sd0;
-            wt_preproc_r[lane] <= 9'sd0;
-        end
         wb_valid <= {WB_PIPE{1'b0}};
         drain_cnt <= 3'd0;
         for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
@@ -189,9 +179,6 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_CH*16){1'b0}};
         bn_addr_flat <= {(PAR_CH*12){1'b0}};
         rq_in_valid <= {PAR_CH{1'b0}};
-
-        feat_rd_data_r <= feat_rd_data_flat;
-        weight_data_r <= weight_data_flat;
 
         // === Writeback pipeline: shift ===
         for (i = WB_PIPE-1; i > 0; i = i - 1) begin
@@ -315,26 +302,24 @@ always @(posedge clk) begin
                         end
                     end
                 end
-                // Preprocess first tap data (from S_TAP_REQ request)
-                for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
-                    ch_abs = curr_ch_base + lane;
-                    if (ch_abs < channels) begin
-                        feat_preproc_r[lane] <= $signed(feat_rd_data_flat[lane*8 +: 8]) - $signed(input_zp_reg[lane]);
-                        wt_preproc_r[lane]   <= $signed(weight_data_flat[lane*8 +: 8]) - $signed(weight_zp_reg[lane]);
-                    end
-                end
                 issue_k <= issue_k + 1'b1;
                 state <= S_TAP_ACC;
             end
 
             S_TAP_ACC: begin
                 busy <= 1'b1;
+                tap_pos = curr_pos + curr_k - PADDING;
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
+                        if ((tap_pos >= 0) && (tap_pos < length)) begin
+                            sample_data = feat_rd_data_flat[lane*8 +: 8];
+                        end else begin
+                            sample_data = 8'sd0;
+                        end
                         acc_reg[lane] <= acc_reg[lane]
-                            + $signed(feat_preproc_r[lane])
-                            * $signed(wt_preproc_r[lane]);
+                            + (($signed(sample_data) - input_zp_reg[lane])
+                            * ($signed(weight_data_flat[lane*8 +: 8]) - weight_zp_reg[lane]));
                     end
                 end
 
@@ -385,14 +370,6 @@ always @(posedge clk) begin
                         state <= S_WB_DRAIN;
                     end
                 end else begin
-                    // Preprocess next tap data for next iteration
-                    for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
-                        ch_abs = curr_ch_base + lane;
-                        if (ch_abs < channels) begin
-                            feat_preproc_r[lane] <= $signed(feat_rd_data_flat[lane*8 +: 8]) - $signed(input_zp_reg[lane]);
-                            wt_preproc_r[lane]   <= $signed(weight_data_flat[lane*8 +: 8]) - $signed(weight_zp_reg[lane]);
-                        end
-                    end
                     curr_k <= curr_k + 1'b1;
                     state <= S_TAP_ACC;
                 end

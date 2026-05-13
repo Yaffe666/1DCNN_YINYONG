@@ -53,17 +53,14 @@ reg [4:0] curr_class_base;
 reg [7:0] curr_ic_base;
 reg [3:0] write_lane;
 
-(* DONT_TOUCH = "true" *) reg signed [31:0] acc_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [15:0] bn_scale_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [31:0] bn_bias_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  input_zp_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  weight_zp_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  output_zp_reg [0:PAR_CLASS-1];
+reg signed [31:0] acc_reg [0:PAR_CLASS-1];
+reg signed [15:0] bn_scale_reg [0:PAR_CLASS-1];
+reg signed [31:0] bn_bias_reg [0:PAR_CLASS-1];
+reg signed [7:0]  input_zp_reg [0:PAR_CLASS-1];
+reg signed [7:0]  weight_zp_reg [0:PAR_CLASS-1];
+reg signed [7:0]  output_zp_reg [0:PAR_CLASS-1];
 reg signed [7:0]  logit_reg [0:PAR_CLASS-1];
-(* DONT_TOUCH = "true" *) reg signed [7:0]  gap_data_reg [0:PAR_IC-1];
-(* DONT_TOUCH = "true" *) reg [PAR_CLASS*PAR_IC*8-1:0] weight_data_r;
-(* DONT_TOUCH = "true" *) reg signed [8:0] gap_preproc_r [0:PAR_CLASS*PAR_IC-1];
-(* DONT_TOUCH = "true" *) reg signed [8:0] wt_preproc_r   [0:PAR_CLASS*PAR_IC-1];
+reg signed [7:0]  gap_data_reg [0:PAR_IC-1];
 reg [PAR_CLASS-1:0] rq_in_valid;
 
 wire [PAR_CLASS-1:0] rq_out_valid;
@@ -128,14 +125,6 @@ always @(posedge clk) begin
         for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
             gap_data_reg[ic_lane] <= 8'sd0;
         end
-        weight_data_r <= {(PAR_CLASS*PAR_IC*8){1'b0}};
-        for (class_lane = 0; class_lane < PAR_CLASS; class_lane = class_lane + 1) begin
-            for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
-                weight_slot = (class_lane * PAR_IC) + ic_lane;
-                gap_preproc_r[weight_slot] <= 9'sd0;
-                wt_preproc_r[weight_slot] <= 9'sd0;
-            end
-        end
     end else begin
         done <= 1'b0;
         error <= 1'b0;
@@ -146,8 +135,6 @@ always @(posedge clk) begin
         logit_wr_addr <= 5'd0;
         logit_wr_data <= 8'sd0;
         rq_in_valid <= {PAR_CLASS{1'b0}};
-
-        weight_data_r <= weight_data_flat;
 
         case (state)
             S_IDLE: begin
@@ -235,20 +222,6 @@ always @(posedge clk) begin
                 for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
                     gap_data_reg[ic_lane] <= gap_rd_data_flat[ic_lane*8 +: 8];
                 end
-                // Preprocess first IC group data (gap from S_IC_REQ, weight captured this cycle)
-                for (class_lane = 0; class_lane < PAR_CLASS; class_lane = class_lane + 1) begin
-                    class_abs = curr_class_base + class_lane;
-                    if (class_abs < num_classes) begin
-                        for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
-                            weight_slot = (class_lane * PAR_IC) + ic_lane;
-                            ic_abs = curr_ic_base + ic_lane;
-                            if (ic_abs < channels) begin
-                                gap_preproc_r[weight_slot] <= $signed(gap_rd_data_flat[ic_lane*8 +: 8]) - $signed(input_zp_reg[class_lane]);
-                                wt_preproc_r[weight_slot]   <= $signed(weight_data_flat[weight_slot*8 +: 8]) - $signed(weight_zp_reg[class_lane]);
-                            end
-                        end
-                    end
-                end
                 state <= S_IC_ACC;
             end
 
@@ -262,9 +235,11 @@ always @(posedge clk) begin
                             ic_abs = curr_ic_base + ic_lane;
                             if (ic_abs < channels) begin
                                 weight_slot = (class_lane * PAR_IC) + ic_lane;
+                                gap_sample = gap_data_reg[ic_lane];
+                                wt_sample = weight_data_flat[weight_slot*8 +: 8];
                                 sum_next = sum_next
-                                    + $signed(gap_preproc_r[weight_slot])
-                                    * $signed(wt_preproc_r[weight_slot]);
+                                    + (($signed(gap_sample) - input_zp_reg[class_lane])
+                                    * ($signed(wt_sample) - weight_zp_reg[class_lane]));
                             end
                         end
                         acc_reg[class_lane] <= sum_next;

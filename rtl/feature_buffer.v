@@ -173,11 +173,6 @@ localparam LANE_IDX_WIDTH = (LANES > 1) ? clog2(LANES) : 1;
 
 wire [BANKS*8-1:0] rd_bank_data_flat;
 
-(* DONT_TOUCH = "true" *) reg [LANES-1:0] wr_en_r;
-(* DONT_TOUCH = "true" *) reg               wr_buf_sel_r;
-(* DONT_TOUCH = "true" *) reg [LANES*ADDR_WIDTH-1:0] wr_addr_flat_r;
-(* DONT_TOUCH = "true" *) reg [LANES*8-1:0] wr_data_flat_r;
-
 reg [BANKS-1:0] wr_bank_en;
 reg [BANKS*BANK_ADDR_WIDTH-1:0] wr_bank_addr_flat;
 reg [BANKS*8-1:0] wr_bank_data_flat;
@@ -206,7 +201,7 @@ generate
         ) u_bank_ram (
             .clk(clk),
             .wr_en(wr_bank_en[bank_gen]),
-            .wr_buf_sel(wr_buf_sel_r),
+            .wr_buf_sel(wr_buf_sel),
             .wr_addr(wr_bank_addr_flat[bank_gen*BANK_ADDR_WIDTH +: BANK_ADDR_WIDTH]),
             .wr_data(wr_bank_data_flat[bank_gen*8 +: 8]),
             .rd_en(rd_bank_en[bank_gen]),
@@ -226,8 +221,8 @@ always @(*) begin
     rd_bank_lane_flat = {(BANKS*LANE_IDX_WIDTH){1'b0}};
 
     for (lane = 0; lane < LANES; lane = lane + 1) begin
-        if (wr_en_r[lane]) begin
-            logical_addr = wr_addr_flat_r[lane*ADDR_WIDTH +: ADDR_WIDTH];
+        if (wr_en[lane]) begin
+            logical_addr = wr_addr_flat[lane*ADDR_WIDTH +: ADDR_WIDTH];
             channel = logical_addr >> 11;
             position = logical_addr[10:0];
             bank_id = logical_addr[13:11];
@@ -236,7 +231,7 @@ always @(*) begin
             if (bank_addr < BANK_DEPTH) begin
                 wr_bank_en[bank_id] = 1'b1;
                 wr_bank_addr_flat[bank_id*BANK_ADDR_WIDTH +: BANK_ADDR_WIDTH] = bank_addr[BANK_ADDR_WIDTH-1:0];
-                wr_bank_data_flat[bank_id*8 +: 8] = wr_data_flat_r[lane*8 +: 8];
+                wr_bank_data_flat[bank_id*8 +: 8] = wr_data_flat[lane*8 +: 8];
             end
         end
 
@@ -257,10 +252,6 @@ always @(*) begin
 end
 
 always @(posedge clk) begin
-    wr_en_r <= wr_en;
-    wr_buf_sel_r <= wr_buf_sel;
-    wr_addr_flat_r <= wr_addr_flat;
-    wr_data_flat_r <= wr_data_flat;
     rd_bank_valid_r <= rd_bank_en;
     rd_bank_lane_flat_r <= rd_bank_lane_flat;
 end
