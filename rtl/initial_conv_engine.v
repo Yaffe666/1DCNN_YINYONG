@@ -78,7 +78,6 @@ reg [2:0]                 drain_cnt;
 integer lane;
 integer oc_abs;
 integer tap_input_index;
-integer oc_group_index;
 integer feature_addr;
 reg signed [7:0] sample_data;
 integer i;
@@ -179,7 +178,7 @@ always @(posedge clk) begin
             for (lane = 0; lane < PAR_OC; lane = lane + 1) begin
                 if (wb_lanes[WB_PIPE-1][lane]) begin
                     oc_abs = wb_oc_base[WB_PIPE-1] + lane;
-                    feature_addr = (oc_abs * MAX_FEATURE_LEN) + wb_pos[WB_PIPE-1];
+                    feature_addr = (oc_abs << 11) + wb_pos[WB_PIPE-1];
                     feat_wr_en[lane] <= 1'b1;
                     feat_wr_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
                     feat_wr_data_flat[lane*8 +: 8] <= rq_out_data[lane];

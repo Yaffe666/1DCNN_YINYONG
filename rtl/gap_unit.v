@@ -43,8 +43,7 @@ reg [7:0] curr_ch_base;
 reg [3:0] write_lane;
 reg signed [31:0] sum_reg [0:PAR_CH-1];
 reg signed [31:0] div_reg;
-reg signed [31:0] recip;
-reg signed [31:0] recip_raw;
+reg [3:0] recip_shift;
 
 integer lane;
 integer ch_abs;
@@ -73,8 +72,7 @@ always @(posedge clk) begin
         curr_ch_base <= 8'd0;
         write_lane <= 4'd0;
         div_reg <= 32'sd0;
-        recip <= 32'sd0;
-        recip_raw <= 32'sd0;
+        recip_shift <= 4'd0;
         feat_rd_en <= {PAR_CH{1'b0}};
         feat_rd_buf_sel <= 1'b0;
         feat_rd_addr_flat <= {(PAR_CH*18){1'b0}};
@@ -116,21 +114,25 @@ always @(posedge clk) begin
             S_RECIP: begin
                 busy <= 1'b1;
                 case (length)
-                    16'd1:    recip <= 32'd16777216;
-                    16'd2:    recip <= 32'd8388608;
-                    16'd4:    recip <= 32'd4194304;
-                    16'd8:    recip <= 32'd2097152;
-                    16'd16:   recip <= 32'd1048576;
-                    16'd32:   recip <= 32'd524288;
-                    16'd64:   recip <= 32'd262144;
-                    16'd128:  recip <= 32'd131072;
-                    16'd256:  recip <= 32'd65536;
-                    16'd512:  recip <= 32'd32768;
-                    16'd1024: recip <= 32'd16384;
-                    16'd2048: recip <= 32'd8192;
-                    default:  recip <= (32'd1 << 24) / length;
+                    16'd1:    begin recip_shift <= 4'd0;  state <= S_RD; end
+                    16'd2:    begin recip_shift <= 4'd1;  state <= S_RD; end
+                    16'd4:    begin recip_shift <= 4'd2;  state <= S_RD; end
+                    16'd8:    begin recip_shift <= 4'd3;  state <= S_RD; end
+                    16'd16:   begin recip_shift <= 4'd4;  state <= S_RD; end
+                    16'd32:   begin recip_shift <= 4'd5;  state <= S_RD; end
+                    16'd64:   begin recip_shift <= 4'd6;  state <= S_RD; end
+                    16'd128:  begin recip_shift <= 4'd7;  state <= S_RD; end
+                    16'd256:  begin recip_shift <= 4'd8;  state <= S_RD; end
+                    16'd512:  begin recip_shift <= 4'd9;  state <= S_RD; end
+                    16'd1024: begin recip_shift <= 4'd10; state <= S_RD; end
+                    16'd2048: begin recip_shift <= 4'd11; state <= S_RD; end
+                    default: begin
+                        recip_shift <= 4'd0;
+                        busy <= 1'b0;
+                        error <= 1'b1;
+                        state <= S_IDLE;
+                    end
                 endcase
-                state <= S_RD;
             end
 
             S_RD: begin
@@ -138,7 +140,7 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + curr_pos;
+                        feature_addr = (ch_abs << 11) + curr_pos;
                         feat_rd_en[lane] <= 1'b1;
                         feat_rd_addr_flat[lane*18 +: 18] <= feature_addr;
                     end
@@ -171,7 +173,7 @@ always @(posedge clk) begin
 
             S_DIV: begin
                 busy <= 1'b1;
-                div_reg <= ($signed(sum_reg[write_lane]) * recip) >>> 24;
+                div_reg <= $signed(sum_reg[write_lane]) >>> recip_shift;
                 state <= S_WRITE;
             end
 

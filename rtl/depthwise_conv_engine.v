@@ -79,7 +79,6 @@ reg [2:0]                 drain_cnt;
 integer lane;
 integer ch_abs;
 integer tap_pos;
-integer ch_group_index;
 integer feature_addr;
 integer bn_base;
 integer weight_base;
@@ -196,7 +195,7 @@ always @(posedge clk) begin
             for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                 if (wb_lanes[WB_PIPE-1][lane]) begin
                     ch_abs = wb_ch_base[WB_PIPE-1] + lane;
-                    feature_addr = (ch_abs * MAX_FEATURE_LEN) + wb_pos[WB_PIPE-1];
+                    feature_addr = (ch_abs << 11) + wb_pos[WB_PIPE-1];
                     feat_wr_en[lane] <= 1'b1;
                     feat_wr_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
                     feat_wr_data_flat[lane*8 +: 8] <= rq_out_data[lane];
@@ -272,14 +271,13 @@ always @(posedge clk) begin
                     acc_reg[lane] <= 32'sd0;
                 end
                 tap_pos = curr_pos + curr_k - PADDING;
-                ch_group_index = curr_ch_base / PAR_CH;
                 weight_base = get_dw_weight_base(block_idx);
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
                         weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + curr_k;
                         if ((tap_pos >= 0) && (tap_pos < length)) begin
-                            feature_addr = (ch_abs * MAX_FEATURE_LEN) + tap_pos;
+                            feature_addr = (ch_abs << 11) + tap_pos;
                             feat_rd_en[lane] <= 1'b1;
                             feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
                         end
@@ -298,7 +296,7 @@ always @(posedge clk) begin
                     if (ch_abs < channels) begin
                         weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
                         if ((tap_pos >= 0) && (tap_pos < length)) begin
-                            feature_addr = (ch_abs * MAX_FEATURE_LEN) + tap_pos;
+                            feature_addr = (ch_abs << 11) + tap_pos;
                             feat_rd_en[lane] <= 1'b1;
                             feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
                         end
@@ -333,7 +331,7 @@ always @(posedge clk) begin
                         if (ch_abs < channels) begin
                             weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
                             if ((tap_pos >= 0) && (tap_pos < length)) begin
-                                feature_addr = (ch_abs * MAX_FEATURE_LEN) + tap_pos;
+                                feature_addr = (ch_abs << 11) + tap_pos;
                                 feat_rd_en[lane] <= 1'b1;
                                 feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
                             end

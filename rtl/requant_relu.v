@@ -16,10 +16,10 @@ module requant_relu (
 
 parameter PIPE_STAGES = 4;
 
-reg signed [47:0] s1_mult;
-reg signed [47:0] s2_shift;
-reg signed [47:0] s3_add_bias;
-reg signed [47:0] s4_add_zp;
+(* DONT_TOUCH = "true" *) reg signed [47:0] s1_mult;
+(* DONT_TOUCH = "true" *) reg signed [47:0] s2_shift;
+(* DONT_TOUCH = "true" *) reg signed [47:0] s3_add_bias;
+(* DONT_TOUCH = "true" *) reg signed [47:0] s4_add_zp;
 reg               s4_relu_en;
 
 reg [PIPE_STAGES-1:0] vld_pipe;

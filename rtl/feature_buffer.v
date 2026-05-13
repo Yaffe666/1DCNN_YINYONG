@@ -223,10 +223,10 @@ always @(*) begin
     for (lane = 0; lane < LANES; lane = lane + 1) begin
         if (wr_en[lane]) begin
             logical_addr = wr_addr_flat[lane*ADDR_WIDTH +: ADDR_WIDTH];
-            channel = logical_addr / MAX_FEATURE_LEN;
-            position = logical_addr - (channel * MAX_FEATURE_LEN);
-            bank_id = channel % BANKS;
-            bank_addr = (channel / BANKS) * MAX_FEATURE_LEN + position;
+            channel = logical_addr >> 11;
+            position = logical_addr[10:0];
+            bank_id = logical_addr[13:11];
+            bank_addr = ((logical_addr >> 14) << 11) + position;
 
             if (bank_addr < BANK_DEPTH) begin
                 wr_bank_en[bank_id] = 1'b1;
@@ -237,10 +237,10 @@ always @(*) begin
 
         if (rd_en[lane]) begin
             logical_addr = rd_addr_flat[lane*ADDR_WIDTH +: ADDR_WIDTH];
-            channel = logical_addr / MAX_FEATURE_LEN;
-            position = logical_addr - (channel * MAX_FEATURE_LEN);
-            bank_id = channel % BANKS;
-            bank_addr = (channel / BANKS) * MAX_FEATURE_LEN + position;
+            channel = logical_addr >> 11;
+            position = logical_addr[10:0];
+            bank_id = logical_addr[13:11];
+            bank_addr = ((logical_addr >> 14) << 11) + position;
 
             if (bank_addr < BANK_DEPTH) begin
                 rd_bank_en[bank_id] = 1'b1;

@@ -58,13 +58,19 @@ reg [7:0] curr_oc_base;
 reg [7:0] curr_ic_base;
 reg [7:0] issue_ic_base;
 
-reg signed [31:0] acc_reg [0:PAR_OC-1];
-reg signed [15:0] bn_scale_reg [0:PAR_OC-1];
-reg signed [31:0] bn_bias_reg [0:PAR_OC-1];
-reg signed [7:0]  input_zp_reg [0:PAR_OC-1];
-reg signed [7:0]  weight_zp_reg [0:PAR_OC-1];
-reg signed [7:0]  output_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [31:0] acc_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [15:0] bn_scale_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [31:0] bn_bias_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  input_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  weight_zp_reg [0:PAR_OC-1];
+(* DONT_TOUCH = "true" *) reg signed [7:0]  output_zp_reg [0:PAR_OC-1];
 reg [PAR_OC-1:0] rq_in_valid;
+
+(* DONT_TOUCH = "true" *) reg [PAR_IC*8-1:0] feat_rd_data_r;
+(* DONT_TOUCH = "true" *) reg [PAR_OC*PAR_IC*8-1:0] weight_data_r;
+
+(* DONT_TOUCH = "true" *) reg signed [8:0] feat_preproc_r [0:PAR_OC*PAR_IC-1];
+(* DONT_TOUCH = "true" *) reg signed [8:0] wt_preproc_r   [0:PAR_OC*PAR_IC-1];
 
 wire [PAR_OC-1:0] rq_out_valid;
 wire rq_out_valid_any;
@@ -80,26 +86,16 @@ integer oc_lane;
 integer ic_lane;
 integer oc_abs;
 integer ic_abs;
+integer ic_abs_next;
 integer feature_addr;
 integer bn_base;
 integer weight_base;
-integer ic_groups;
-integer oc_group_index;
-integer ic_group_index;
 integer weight_addr_value;
 integer weight_slot;
 reg signed [7:0] feat_sample;
 reg signed [7:0] wt_sample;
 reg signed [31:0] sum_next;
 integer i;
-
-function integer ceil_div;
-    input integer value;
-    input integer divisor;
-    begin
-        ceil_div = (value + divisor - 1) / divisor;
-    end
-endfunction
 
 function integer get_pw_weight_base;
     input [2:0] blk;
@@ -167,6 +163,15 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_OC*PAR_IC*16){1'b0}};
         bn_addr_flat <= {(PAR_OC*12){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
+        feat_rd_data_r <= {(PAR_IC*8){1'b0}};
+        weight_data_r <= {(PAR_OC*PAR_IC*8){1'b0}};
+        for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
+            for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                weight_slot = (oc_lane * PAR_IC) + ic_lane;
+                feat_preproc_r[weight_slot] <= 9'sd0;
+                wt_preproc_r[weight_slot] <= 9'sd0;
+            end
+        end
         wb_valid <= {WB_PIPE{1'b0}};
         drain_cnt <= 3'd0;
         for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
@@ -196,6 +201,9 @@ always @(posedge clk) begin
         bn_addr_flat <= {(PAR_OC*12){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
 
+        feat_rd_data_r <= feat_rd_data_flat;
+        weight_data_r <= weight_data_flat;
+
         // === Writeback pipeline: shift ===
         for (i = WB_PIPE-1; i > 0; i = i - 1) begin
             wb_valid[i]   <= wb_valid[i-1];
@@ -211,7 +219,7 @@ always @(posedge clk) begin
             for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
                 if (wb_lanes[WB_PIPE-1][oc_lane]) begin
                     oc_abs = wb_oc_base[WB_PIPE-1] + oc_lane;
-                    feature_addr = (oc_abs * MAX_FEATURE_LEN) + wb_pos[WB_PIPE-1];
+                    feature_addr = (oc_abs << 11) + wb_pos[WB_PIPE-1];
                     feat_wr_en[oc_lane] <= 1'b1;
                     feat_wr_addr_flat[oc_lane*18 +: 18] <= feature_addr[17:0];
                     feat_wr_data_flat[oc_lane*8 +: 8] <= rq_out_data[oc_lane];
@@ -287,14 +295,11 @@ always @(posedge clk) begin
                     acc_reg[oc_lane] <= 32'sd0;
                 end
                 weight_base = get_pw_weight_base(block_idx);
-                ic_groups = ceil_div(in_channels, PAR_IC);
-                oc_group_index = curr_oc_base / PAR_OC;
-                ic_group_index = curr_ic_base / PAR_IC;
 
                 for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
                     ic_abs = curr_ic_base + ic_lane;
                     if (ic_abs < in_channels) begin
-                        feature_addr = (ic_abs * MAX_FEATURE_LEN) + curr_pos;
+                        feature_addr = (ic_abs << 11) + curr_pos;
                         feat_rd_en[ic_lane] <= 1'b1;
                         feat_rd_addr_flat[ic_lane*18 +: 18] <= feature_addr[17:0];
                     end
@@ -318,11 +323,26 @@ always @(posedge clk) begin
                 busy <= 1'b1;
                 weight_base = get_pw_weight_base(block_idx);
 
+                // Preprocess first IC group data (from S_IC_REQ request)
+                for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
+                    oc_abs = curr_oc_base + oc_lane;
+                    if (oc_abs < out_channels) begin
+                        for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                            weight_slot = (oc_lane * PAR_IC) + ic_lane;
+                            ic_abs = curr_ic_base + ic_lane;
+                            if (ic_abs < in_channels) begin
+                                feat_preproc_r[weight_slot] <= $signed(feat_rd_data_flat[ic_lane*8 +: 8]) - $signed(input_zp_reg[oc_lane]);
+                                wt_preproc_r[weight_slot]   <= $signed(weight_data_flat[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
+                            end
+                        end
+                    end
+                end
+
                 if (issue_ic_base < in_channels) begin
                     for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
                         ic_abs = issue_ic_base + ic_lane;
                         if (ic_abs < in_channels) begin
-                            feature_addr = (ic_abs * MAX_FEATURE_LEN) + curr_pos;
+                            feature_addr = (ic_abs << 11) + curr_pos;
                             feat_rd_en[ic_lane] <= 1'b1;
                             feat_rd_addr_flat[ic_lane*18 +: 18] <= feature_addr[17:0];
                         end
@@ -346,6 +366,8 @@ always @(posedge clk) begin
 
             S_IC_ACC: begin
                 busy <= 1'b1;
+
+                // Accumulate using preprocessed data (from previous cycle)
                 for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
                     oc_abs = curr_oc_base + oc_lane;
                     if (oc_abs < out_channels) begin
@@ -354,11 +376,9 @@ always @(posedge clk) begin
                             ic_abs = curr_ic_base + ic_lane;
                             if (ic_abs < in_channels) begin
                                 weight_slot = (oc_lane * PAR_IC) + ic_lane;
-                                feat_sample = feat_rd_data_flat[ic_lane*8 +: 8];
-                                wt_sample = weight_data_flat[weight_slot*8 +: 8];
                                 sum_next = sum_next
-                                    + (($signed(feat_sample) - input_zp_reg[oc_lane])
-                                    * ($signed(wt_sample) - weight_zp_reg[oc_lane]));
+                                    + $signed(feat_preproc_r[weight_slot])
+                                    * $signed(wt_preproc_r[weight_slot]);
                             end
                         end
                         acc_reg[oc_lane] <= sum_next;
@@ -370,7 +390,7 @@ always @(posedge clk) begin
                     for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
                         ic_abs = issue_ic_base + ic_lane;
                         if (ic_abs < in_channels) begin
-                            feature_addr = (ic_abs * MAX_FEATURE_LEN) + curr_pos;
+                            feature_addr = (ic_abs << 11) + curr_pos;
                             feat_rd_en[ic_lane] <= 1'b1;
                             feat_rd_addr_flat[ic_lane*18 +: 18] <= feature_addr[17:0];
                         end
@@ -391,6 +411,21 @@ always @(posedge clk) begin
 
                 if ((curr_ic_base + PAR_IC) < in_channels) begin
                     curr_ic_base <= curr_ic_base + PAR_IC;
+
+                    // Preprocess next IC group (feat_rd_data_flat has data from previous read)
+                    for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
+                        oc_abs = curr_oc_base + oc_lane;
+                        if (oc_abs < out_channels) begin
+                            for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                                weight_slot = (oc_lane * PAR_IC) + ic_lane;
+                                ic_abs_next = (curr_ic_base + PAR_IC) + ic_lane;
+                                if (ic_abs_next < in_channels) begin
+                                    feat_preproc_r[weight_slot] <= $signed(feat_rd_data_flat[ic_lane*8 +: 8]) - $signed(input_zp_reg[oc_lane]);
+                                    wt_preproc_r[weight_slot]   <= $signed(weight_data_flat[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
+                                end
+                            end
+                        end
+                    end
                     state <= S_IC_ACC;
                 end else begin
                     // Last IC group – stream requant + push writeback

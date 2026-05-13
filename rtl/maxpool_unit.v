@@ -104,7 +104,7 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + rd_pos;
+                        feature_addr = (ch_abs << 11) + rd_pos;
                         feat_rd_en[lane] <= 1'b1;
                         feat_rd_addr_flat[lane*18 +: 18] <= feature_addr;
                     end
@@ -127,7 +127,7 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + rd_pos;
+                        feature_addr = (ch_abs << 11) + rd_pos;
                         feat_rd_en[lane] <= 1'b1;
                         feat_rd_addr_flat[lane*18 +: 18] <= feature_addr;
                     end
@@ -141,7 +141,7 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + rd_pos;
+                        feature_addr = (ch_abs << 11) + rd_pos;
                         feat_rd_en[lane] <= 1'b1;
                         feat_rd_addr_flat[lane*18 +: 18] <= feature_addr;
                     end
@@ -160,7 +160,7 @@ always @(posedge clk) begin
                     val1[lane] <= feat_rd_data_flat[lane*8 +: 8];
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + curr_pos;
+                        feature_addr = (ch_abs << 11) + curr_pos;
                         max_value = (val0[lane] >= $signed(feat_rd_data_flat[lane*8 +: 8])) ? val0[lane] : $signed(feat_rd_data_flat[lane*8 +: 8]);
                         feat_wr_en[lane] <= 1'b1;
                         feat_wr_addr_flat[lane*18 +: 18] <= feature_addr;
@@ -187,7 +187,7 @@ always @(posedge clk) begin
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
-                        feature_addr = (ch_abs * MAX_FEATURE_LEN) + curr_pos;
+                        feature_addr = (ch_abs << 11) + curr_pos;
                         max_value = (val0[lane] >= val1[lane]) ? val0[lane] : val1[lane];
                         feat_wr_en[lane] <= 1'b1;
                         feat_wr_addr_flat[lane*18 +: 18] <= feature_addr;
