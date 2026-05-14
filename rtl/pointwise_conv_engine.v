@@ -47,10 +47,12 @@ localparam [3:0] S_IDLE      = 4'd0;
 localparam [3:0] S_LOAD_BN    = 4'd1;
 localparam [3:0] S_WAIT_BN    = 4'd2;
 localparam [3:0] S_CAPTURE_BN = 4'd3;
-localparam [3:0] S_IC_REQ     = 4'd4;
-localparam [3:0] S_IC_WAIT    = 4'd5;
-localparam [3:0] S_IC_ACC     = 4'd6;
-localparam [3:0] S_WB_DRAIN   = 4'd7;
+localparam [3:0] S_IC_REQ      = 4'd4;
+localparam [3:0] S_IC_WAIT     = 4'd5;
+localparam [3:0] S_IC_WAIT2    = 4'd8;
+localparam [3:0] S_IC_PREPROC  = 4'd9;
+localparam [3:0] S_IC_ACC      = 4'd6;
+localparam [3:0] S_WB_DRAIN    = 4'd7;
 
 reg [3:0] state;
 reg [15:0] curr_pos;
@@ -66,7 +68,6 @@ reg [7:0] issue_ic_base;
 (* DONT_TOUCH = "true" *) reg signed [7:0]  output_zp_reg [0:PAR_OC-1];
 reg [PAR_OC-1:0] rq_in_valid;
 
-(* DONT_TOUCH = "true" *) reg [PAR_IC*8-1:0] feat_rd_data_r;
 (* DONT_TOUCH = "true" *) reg [PAR_OC*PAR_IC*8-1:0] weight_data_r;
 
 (* DONT_TOUCH = "true" *) reg signed [8:0] feat_preproc_r [0:PAR_OC*PAR_IC-1];
@@ -163,7 +164,6 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_OC*PAR_IC*16){1'b0}};
         bn_addr_flat <= {(PAR_OC*12){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
-        feat_rd_data_r <= {(PAR_IC*8){1'b0}};
         weight_data_r <= {(PAR_OC*PAR_IC*8){1'b0}};
         for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
             for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
@@ -201,7 +201,6 @@ always @(posedge clk) begin
         bn_addr_flat <= {(PAR_OC*12){1'b0}};
         rq_in_valid <= {PAR_OC{1'b0}};
 
-        feat_rd_data_r <= feat_rd_data_flat;
         weight_data_r <= weight_data_flat;
 
         // === Writeback pipeline: shift ===
@@ -323,7 +322,66 @@ always @(posedge clk) begin
                 busy <= 1'b1;
                 weight_base = get_pw_weight_base(block_idx);
 
-                // Preprocess first IC group data (from S_IC_REQ request)
+                if (issue_ic_base < in_channels) begin
+                    for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                        ic_abs = issue_ic_base + ic_lane;
+                        if (ic_abs < in_channels) begin
+                            feature_addr = (ic_abs << 11) + curr_pos;
+                            feat_rd_en[ic_lane] <= 1'b1;
+                            feat_rd_addr_flat[ic_lane*18 +: 18] <= feature_addr[17:0];
+                        end
+                    end
+
+                    for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
+                        oc_abs = curr_oc_base + oc_lane;
+                        for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                            weight_slot = (oc_lane * PAR_IC) + ic_lane;
+                            if ((oc_abs < out_channels) && ((issue_ic_base + ic_lane) < in_channels)) begin
+                                weight_addr_value = weight_base + (oc_abs * in_channels) + (issue_ic_base + ic_lane);
+                                weight_addr_flat[weight_slot*16 +: 16] <= weight_addr_value;
+                            end
+                        end
+                    end
+                    issue_ic_base <= issue_ic_base + PAR_IC;
+                end
+
+                state <= S_IC_WAIT2;
+            end
+
+            S_IC_WAIT2: begin
+                busy <= 1'b1;
+                weight_base = get_pw_weight_base(block_idx);
+
+                if (issue_ic_base < in_channels) begin
+                    for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                        ic_abs = issue_ic_base + ic_lane;
+                        if (ic_abs < in_channels) begin
+                            feature_addr = (ic_abs << 11) + curr_pos;
+                            feat_rd_en[ic_lane] <= 1'b1;
+                            feat_rd_addr_flat[ic_lane*18 +: 18] <= feature_addr[17:0];
+                        end
+                    end
+
+                    for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
+                        oc_abs = curr_oc_base + oc_lane;
+                        for (ic_lane = 0; ic_lane < PAR_IC; ic_lane = ic_lane + 1) begin
+                            weight_slot = (oc_lane * PAR_IC) + ic_lane;
+                            if ((oc_abs < out_channels) && ((issue_ic_base + ic_lane) < in_channels)) begin
+                                weight_addr_value = weight_base + (oc_abs * in_channels) + (issue_ic_base + ic_lane);
+                                weight_addr_flat[weight_slot*16 +: 16] <= weight_addr_value;
+                            end
+                        end
+                    end
+                    issue_ic_base <= issue_ic_base + PAR_IC;
+                end
+
+                state <= S_IC_PREPROC;
+            end
+
+            S_IC_PREPROC: begin
+                busy <= 1'b1;
+                weight_base = get_pw_weight_base(block_idx);
+
                 for (oc_lane = 0; oc_lane < PAR_OC; oc_lane = oc_lane + 1) begin
                     oc_abs = curr_oc_base + oc_lane;
                     if (oc_abs < out_channels) begin
@@ -332,7 +390,7 @@ always @(posedge clk) begin
                             ic_abs = curr_ic_base + ic_lane;
                             if (ic_abs < in_channels) begin
                                 feat_preproc_r[weight_slot] <= $signed(feat_rd_data_flat[ic_lane*8 +: 8]) - $signed(input_zp_reg[oc_lane]);
-                                wt_preproc_r[weight_slot]   <= $signed(weight_data_flat[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
+                                wt_preproc_r[weight_slot]   <= $signed(weight_data_r[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
                             end
                         end
                     end
@@ -421,7 +479,7 @@ always @(posedge clk) begin
                                 ic_abs_next = (curr_ic_base + PAR_IC) + ic_lane;
                                 if (ic_abs_next < in_channels) begin
                                     feat_preproc_r[weight_slot] <= $signed(feat_rd_data_flat[ic_lane*8 +: 8]) - $signed(input_zp_reg[oc_lane]);
-                                    wt_preproc_r[weight_slot]   <= $signed(weight_data_flat[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
+                                    wt_preproc_r[weight_slot]   <= $signed(weight_data_r[weight_slot*8 +: 8]) - $signed(weight_zp_reg[oc_lane]);
                                 end
                             end
                         end

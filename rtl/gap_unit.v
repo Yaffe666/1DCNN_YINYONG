@@ -30,7 +30,7 @@ localparam MAX_FEATURE_LEN = 2048;
 
 localparam [2:0] S_IDLE   = 3'd0;
 localparam [2:0] S_RECIP  = 3'd1;
-localparam [2:0] S_RECIP2 = 3'd2;
+localparam [2:0] S_WAIT2  = 3'd2;
 localparam [2:0] S_RD     = 3'd3;
 localparam [2:0] S_WAIT   = 3'd4;
 localparam [2:0] S_ACC    = 3'd5;
@@ -149,6 +149,11 @@ always @(posedge clk) begin
             end
 
             S_WAIT: begin
+                busy <= 1'b1;
+                state <= S_WAIT2;
+            end
+
+            S_WAIT2: begin
                 busy <= 1'b1;
                 state <= S_ACC;
             end

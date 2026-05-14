@@ -47,10 +47,12 @@ localparam [3:0] S_IDLE      = 4'd0;
 localparam [3:0] S_LOAD_BN    = 4'd1;
 localparam [3:0] S_WAIT_BN    = 4'd2;
 localparam [3:0] S_CAPTURE_BN = 4'd3;
-localparam [3:0] S_TAP_REQ    = 4'd4;
-localparam [3:0] S_TAP_WAIT   = 4'd5;
-localparam [3:0] S_TAP_ACC    = 4'd6;
-localparam [3:0] S_WB_DRAIN   = 4'd7;
+localparam [3:0] S_TAP_REQ     = 4'd4;
+localparam [3:0] S_TAP_WAIT    = 4'd5;
+localparam [3:0] S_TAP_WAIT2   = 4'd8;
+localparam [3:0] S_TAP_PREPROC = 4'd9;
+localparam [3:0] S_TAP_ACC     = 4'd6;
+localparam [3:0] S_WB_DRAIN    = 4'd7;
 
 reg [3:0] state;
 reg [15:0] curr_pos;
@@ -65,6 +67,9 @@ reg signed [7:0]  input_zp_reg [0:PAR_CH-1];
 reg signed [7:0]  weight_zp_reg [0:PAR_CH-1];
 reg signed [7:0]  output_zp_reg [0:PAR_CH-1];
 reg [PAR_CH-1:0] rq_in_valid;
+reg [PAR_CH*8-1:0] weight_data_r;
+reg signed [8:0] feat_preproc_r [0:PAR_CH-1];
+reg signed [8:0] wt_preproc_r [0:PAR_CH-1];
 
 wire [PAR_CH-1:0] rq_out_valid;
 wire rq_out_valid_any;
@@ -79,6 +84,7 @@ reg [2:0]                 drain_cnt;
 integer lane;
 integer ch_abs;
 integer tap_pos;
+integer preproc_k;
 integer feature_addr;
 integer bn_base;
 integer weight_base;
@@ -151,6 +157,7 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_CH*16){1'b0}};
         bn_addr_flat <= {(PAR_CH*12){1'b0}};
         rq_in_valid <= {PAR_CH{1'b0}};
+        weight_data_r <= {(PAR_CH*8){1'b0}};
         wb_valid <= {WB_PIPE{1'b0}};
         drain_cnt <= 3'd0;
         for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
@@ -160,6 +167,8 @@ always @(posedge clk) begin
             input_zp_reg[lane] <= 8'sd0;
             weight_zp_reg[lane] <= 8'sd0;
             output_zp_reg[lane] <= 8'sd0;
+            feat_preproc_r[lane] <= 9'sd0;
+            wt_preproc_r[lane] <= 9'sd0;
         end
         for (i = 0; i < WB_PIPE; i = i + 1) begin
             wb_pos[i] <= 16'd0;
@@ -179,6 +188,7 @@ always @(posedge clk) begin
         weight_addr_flat <= {(PAR_CH*16){1'b0}};
         bn_addr_flat <= {(PAR_CH*12){1'b0}};
         rq_in_valid <= {PAR_CH{1'b0}};
+        weight_data_r <= weight_data_flat;
 
         // === Writeback pipeline: shift ===
         for (i = WB_PIPE-1; i > 0; i = i - 1) begin
@@ -289,26 +299,50 @@ always @(posedge clk) begin
 
             S_TAP_WAIT: begin
                 busy <= 1'b1;
-                tap_pos = curr_pos + issue_k - PADDING;
-                weight_base = get_dw_weight_base(block_idx);
-                for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
-                    ch_abs = curr_ch_base + lane;
-                    if (ch_abs < channels) begin
-                        weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
-                        if ((tap_pos >= 0) && (tap_pos < length)) begin
-                            feature_addr = (ch_abs << 11) + tap_pos;
-                            feat_rd_en[lane] <= 1'b1;
-                            feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
+                if (issue_k < KERNEL_SIZE) begin
+                    tap_pos = curr_pos + issue_k - PADDING;
+                    weight_base = get_dw_weight_base(block_idx);
+                    for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                        ch_abs = curr_ch_base + lane;
+                        if (ch_abs < channels) begin
+                            weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
+                            if ((tap_pos >= 0) && (tap_pos < length)) begin
+                                feature_addr = (ch_abs << 11) + tap_pos;
+                                feat_rd_en[lane] <= 1'b1;
+                                feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
+                            end
                         end
                     end
+                    issue_k <= issue_k + 1'b1;
                 end
-                issue_k <= issue_k + 1'b1;
-                state <= S_TAP_ACC;
+                state <= S_TAP_WAIT2;
             end
 
-            S_TAP_ACC: begin
+            S_TAP_WAIT2: begin
                 busy <= 1'b1;
-                tap_pos = curr_pos + curr_k - PADDING;
+                if (issue_k < KERNEL_SIZE) begin
+                    tap_pos = curr_pos + issue_k - PADDING;
+                    weight_base = get_dw_weight_base(block_idx);
+                    for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                        ch_abs = curr_ch_base + lane;
+                        if (ch_abs < channels) begin
+                            weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
+                            if ((tap_pos >= 0) && (tap_pos < length)) begin
+                                feature_addr = (ch_abs << 11) + tap_pos;
+                                feat_rd_en[lane] <= 1'b1;
+                                feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
+                            end
+                        end
+                    end
+                    issue_k <= issue_k + 1'b1;
+                end
+                state <= S_TAP_PREPROC;
+            end
+
+            S_TAP_PREPROC: begin
+                busy <= 1'b1;
+                preproc_k = curr_k;
+                tap_pos = curr_pos + preproc_k - PADDING;
                 for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
                     ch_abs = curr_ch_base + lane;
                     if (ch_abs < channels) begin
@@ -317,9 +351,40 @@ always @(posedge clk) begin
                         end else begin
                             sample_data = 8'sd0;
                         end
+                        feat_preproc_r[lane] <= $signed(sample_data) - input_zp_reg[lane];
+                        wt_preproc_r[lane] <= $signed(weight_data_r[lane*8 +: 8]) - weight_zp_reg[lane];
+                    end else begin
+                        feat_preproc_r[lane] <= 9'sd0;
+                        wt_preproc_r[lane] <= 9'sd0;
+                    end
+                end
+
+                if (issue_k < KERNEL_SIZE) begin
+                    tap_pos = curr_pos + issue_k - PADDING;
+                    weight_base = get_dw_weight_base(block_idx);
+                    for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                        ch_abs = curr_ch_base + lane;
+                        if (ch_abs < channels) begin
+                            weight_addr_flat[lane*16 +: 16] <= weight_base + (ch_abs * KERNEL_SIZE) + issue_k;
+                            if ((tap_pos >= 0) && (tap_pos < length)) begin
+                                feature_addr = (ch_abs << 11) + tap_pos;
+                                feat_rd_en[lane] <= 1'b1;
+                                feat_rd_addr_flat[lane*18 +: 18] <= feature_addr[17:0];
+                            end
+                        end
+                    end
+                    issue_k <= issue_k + 1'b1;
+                end
+                state <= S_TAP_ACC;
+            end
+
+            S_TAP_ACC: begin
+                busy <= 1'b1;
+                for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                    ch_abs = curr_ch_base + lane;
+                    if (ch_abs < channels) begin
                         acc_reg[lane] <= acc_reg[lane]
-                            + (($signed(sample_data) - input_zp_reg[lane])
-                            * ($signed(weight_data_flat[lane*8 +: 8]) - weight_zp_reg[lane]));
+                            + ($signed(feat_preproc_r[lane]) * $signed(wt_preproc_r[lane]));
                     end
                 end
 
@@ -370,6 +435,23 @@ always @(posedge clk) begin
                         state <= S_WB_DRAIN;
                     end
                 end else begin
+                    preproc_k = curr_k + 1'b1;
+                    tap_pos = curr_pos + preproc_k - PADDING;
+                    for (lane = 0; lane < PAR_CH; lane = lane + 1) begin
+                        ch_abs = curr_ch_base + lane;
+                        if (ch_abs < channels) begin
+                            if ((tap_pos >= 0) && (tap_pos < length)) begin
+                                sample_data = feat_rd_data_flat[lane*8 +: 8];
+                            end else begin
+                                sample_data = 8'sd0;
+                            end
+                            feat_preproc_r[lane] <= $signed(sample_data) - input_zp_reg[lane];
+                            wt_preproc_r[lane] <= $signed(weight_data_r[lane*8 +: 8]) - weight_zp_reg[lane];
+                        end else begin
+                            feat_preproc_r[lane] <= 9'sd0;
+                            wt_preproc_r[lane] <= 9'sd0;
+                        end
+                    end
                     curr_k <= curr_k + 1'b1;
                     state <= S_TAP_ACC;
                 end
